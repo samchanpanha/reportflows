@@ -22,8 +22,10 @@ model Organization {
   createdAt   DateTime @default(now()) @map("created_at")
   users       User[]
   dataSources DataSource[]
+  queries     Query[]
   reports     ReportTemplate[]
   schedules   Schedule[]
+  notifications Notification[]
   auditLogs   AuditLog[]
 
   @@map("organizations")
@@ -98,22 +100,81 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@map("audit_logs")
 }
-// Placeholder models for Phase 2 data sources, reports, and schedules.
-// These are necessary because the Organization model references them.
+// ─── Data Sources ──────────────────────────────────────────────
 model DataSource {
   id          String   @id @default(uuid()) @db.Uuid
   orgId       String   @map("org_id") @db.Uuid
+  name        String
+  type        String   @default("POSTGRESQL") // POSTGRESQL, MYSQL, CSV, API
+  host        String?
+  port        Int?
+  database    String?  @map("db_name")
+  username    String?
+  passwordEnc String?  @map("password_enc") // encrypted
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE, ERROR
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("data_sources")
 }
 
+// ─── Queries ───────────────────────────────────────────────────
+model Query {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  name        String
+  description String?
+  sql         String   @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("queries")
+}
+
+// ─── Report Templates ──────────────────────────────────────────
 model ReportTemplate {
   id          String   @id @default(uuid()) @db.Uuid
   orgId       String   @map("org_id") @db.Uuid
+  title       String
+  description String?
+  format      String   @default("PDF") // PDF, EXCEL, CSV
+  lastRunAt   DateTime? @map("last_run_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("report_templates")
 }
 
+// ─── Schedules ─────────────────────────────────────────────────
 model Schedule {
   id          String   @id @default(uuid()) @db.Uuid
   orgId       String   @map("org_id") @db.Uuid
+  name        String
+  cron        String   @default("0 9 * * 1") // e.g. every Monday 9am
+  enabled     Boolean  @default(true)
+  lastRunAt   DateTime? @map("last_run_at")
+  nextRunAt   DateTime? @map("next_run_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("schedules")
+}
+
+// ─── Notifications ─────────────────────────────────────────────
+model Notification {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  type        String   @default("INFO") // INFO, WARNING, ERROR, SUCCESS
+  title       String
+  message     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("notifications")
 }
