@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
-import { createQuery, updateQuery, executeQuery, getQueryVersions, rollbackQueryVersion } from "@/app/actions/queries"
+import { createQuery, updateQuery, getQueryVersions, rollbackQueryVersion } from "@/app/actions/queries"
+import { toast } from "sonner"
 import type { Prisma } from "@prisma/client"
 
 interface QueryFormProps {
@@ -88,20 +89,27 @@ export function QueryForm({ dataSources, initialData, onSuccess }: QueryFormProp
 
   const handleExecute = async () => {
     if (!initialData?.id) {
-      console.log("Save the query first to execute")
+      toast?.info ? toast.info("Save the query first before executing.") : console.log("Save the query first")
       return
     }
 
     setExecuting(true)
     try {
-      const result = await executeQuery(initialData.id, formData.paramValues)
-      if (result.success) {
-        setResults({ columns: result.columns || [], rows: result.rows || [] })
+      const res = await fetch(`/api/queries/${initialData.id}/execute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paramValues: formData.paramValues }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setResults({ columns: data.columns || [], rows: data.rows || [] })
+        toast?.success?.(data.message || `${data.rows?.length || 0} rows returned`)
       } else {
-        console.error(result.error || "Failed to execute")
+        const err = await res.json().catch(() => ({}))
+        toast?.error?.(err.error || "Execution failed")
       }
     } catch (error) {
-      console.error("Execute error:", error)
+      toast?.error?.("Network error while executing query")
     } finally {
       setExecuting(false)
     }

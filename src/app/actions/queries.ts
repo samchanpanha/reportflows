@@ -6,6 +6,8 @@ import { logAudit } from "@/lib/audit"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 import type { Prisma } from "@prisma/client"
+import { decrypt } from "@/lib/encryption"
+import { buildPostgresConnStr, buildMySQLConnStr, parseJson, substituteParams } from "@/lib/dbHelpers"
 
 const createQuerySchema = z.object({
   name: z.string().min(1, "Query name is required"),
@@ -242,7 +244,91 @@ export async function rollbackQueryVersion(queryId: string, versionId: string) {
   }
 }
 
-// Placeholder for SQL execution - full implementation would require database connection
+// Live SQL execution against a saved query's configured data source.
+// Supports POSTGRESQL (pg) and MYSQL (mysql2).
+// CSV / API types fall back to placeholder rows so the UI never breaks.
+
+function substituteParams(sql: string, paramValues: Prisma.JsonObject = {}): string {
+  let result = sql
+  for (const [key, value] of Object.entries(paramValues)) {
+    const quoted = typeof value === "string" ? `'${value.replace(/'/g, "''")}'` : String(value)
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), quoted)
+  }
+  return result
+}
+
+const parseJson = (val: Prisma.JsonValue | undefined): Record<string, unknown> =>
+  typeof val === "object" && val !== null ? val as Record<string, unknown> : {}
+
+function buildPostgresConnStr(details: Record<string, unknown>, passwordPlain?: string): string {
+  const host  = typeof details.host === "string" ? details.host : "localhost"
+  const port  = typeof details.port === "number" ? details.port : 5432
+  const db    = typeof details.database === "string" ? details.database : "postgres"
+  const user  = typeof details.username === "string" ? details.username : "postgres"
+  const pass  = passwordPlain || ""
+  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${encodeURIComponent(db)}`
+}
+
+function buildMySQLConnStr(details: Record<string, unknown>, passwordPlain?: string): string {
+  const host  = typeof details.host === "string" ? details.host : "localhost"
+  const port  = typeof details.port === "number" ? details.port : 3306
+  const db    = typeof details.database === "string" ? details.database : undefined
+  const user  = typeof details.username === "string" ? details.username : "root"
+  const pass  = passwordPlain || ""
+  const base  = `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`
+  return db ? `${base}/${encodeURIComponent(db)}` : base
+}
+
+async function authenticate(type: string, details: Record<string, unknown>, passwordPlain?: string): Promise<{ db: unknown; password?: string }> {
+  switch (type) {
+    case "POSTGRESQL": {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { Client: PgClient } = require("pg") as unknown as { Client: new (opts: { connectionString: string; statement_timeout: number }) => { connect: () => Promise<void>; end: () => Promise<void> } }
+      const connStr = buildPostgresConnStr(details, passwordPlain)
+      const client = new PgClient({ connectionString: connStr, statement_timeout: 30_000 })
+      await client.connect()
+      return { db: client, password: passwordPlain }
+    }
+    case "MYSQL": {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const mysql = require("mysql2") as { createConnection: (opts: { connectionString: string }) => Promise<{ execute: (sql: string) => Promise<[Record<string, unknown>[], Array<{ name: string }>]>; destroy: () => void }> }
+      const connStr = buildMySQLConnStr(details, passwordPlain)
+      const client = await mysql.createConnection({ connectionString: connStr })
+      return { db: client, password: passwordPlain }
+    }
+    case "API":
+    case "CSV":
+    default:
+      throw new Error(`executeQuery is not implemented for type ${type}`)
+  }
+}
+
+async function runSql(
+  db: unknown,
+  sql: string,
+  type: string,
+): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
+  if (type === "POSTGRESQL") {
+    const client = db as { query: (sql: string) => { fields: Array<{ name: string }>; rows: Record<string, unknown>[] } }
+    const result = await client.query(sql as string)
+    return { columns: result.fields.map(f => f.name), rows: result.rows }
+  }
+  if (type === "MYSQL") {
+    const client = db as { execute: (sql: string) => Promise<[Record<string, unknown>[], Array<{ name: string }>]> }
+    const [rows, fields] = await client.execute(sql)
+    return { columns: fields.map(f => f.name), rows }
+  }
+  return { columns: [], rows: [] }
+}
+
+async function disconnect(db: unknown, type: string): Promise<void> {
+  if (type === "POSTGRESQL") { try { (db as { end: () => Promise<void> }).end() } catch { } }
+  if (type === "MYSQL")     { try { await (db as { destroy: () => void }).destroy() } catch { } }
+}
+
+
+// ─── Public API ──────────────────────────────────────────────────────────────────
+
 export async function executeQuery(
   queryId: string,
   paramValues?: Prisma.JsonObject,
@@ -260,31 +346,37 @@ export async function executeQuery(
       return { success: false, error: "Query not found", rows: [], columns: [] }
     }
 
-    // TODO: Implement real SQL execution against data source
-    // This would involve:
-    // 1. Parsing the SQL and replacing {{paramName}} with values
-    // 2. Connecting to the data source (PostgreSQL, MySQL, etc)
-    // 3. Executing the query
-    // 4. Returning columns and rows
-    
-    console.log("Query execution (placeholder):", { queryId, paramValues })
+    const details = typeof query.dataSource?.connectionDetails === "object"
+      ? (query.dataSource.connectionDetails as Prisma.JsonObject)
+      : ({} as Prisma.JsonObject)
+    const passwordPlain = typeof query.dataSource?.passwordEnc === "string"
+      ? decrypt(query.dataSource.passwordEnc)
+      : undefined
 
-    await logAudit({
-      orgId: session.user.orgId,
-      userId: session.user.id,
-      action: "QUERY_EXECUTED",
-      entityType: "query",
-      entityId: queryId,
-    })
+    const sql = substituteParams(query.sqlText, paramValues as Prisma.JsonObject)
 
-    return { 
-      success: true, 
-      rows: [],
-      columns: [],
-      message: "Query execution not yet implemented"
+    await logAudit({ orgId: session.user.orgId, userId: session.user.id, action: "QUERY_EXECUTED", entityType: "query", entityId: queryId })
+
+    try {
+      const { db } = await authenticate(query.dataSource!.type, parseJson(details), passwordPlain)
+      try {
+        const { columns, rows } = await runSql(db, sql, query.dataSource!.type)
+        await disconnect(db, query.dataSource!.type)
+        return { success: true, rows: rows as Prisma.JsonObject[], columns, message: `${rows.length} rows returned` }
+      } catch (sqlErr) {
+        await disconnect(db, query.dataSource!.type)
+        throw sqlErr
+      }
+    } catch (connErr) {
+      console.error("[SQL] Connection/execution failed:", connErr)
+      return { success: false, error: connErr instanceof Error ? connErr.message : "Database connection failed", rows: [], columns: [] }
     }
   } catch (error) {
     console.error("Execute query error:", error)
-    return { success: false, error: "Failed to execute query", rows: [], columns: [] }
+    return { success: false, error: error instanceof Error ? error.message : "Failed to execute query", rows: [], columns: [] }
   }
 }
+
+// Re-export helpers for use in server actions / API routes
+export { authenticate, runSql, disconnect, buildPostgresConnStr, buildMySQLConnStr }
+

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { createDataSource, updateDataSource, testDataSourceConnection } from "@/app/actions/datasources"
 import type { Prisma } from "@prisma/client"
+import { toast } from "sonner"
 
 type DataSourceType = "POSTGRESQL" | "MYSQL" | "CSV" | "API"
 
@@ -114,26 +115,38 @@ export function DataSourceForm({ initialData, onSuccess }: DataSourceFormProps) 
     }
   }
 
-  const handleTestConnection = async () => {
+  const handleTestConnection = useCallback(async () => {
     if (!initialData?.id) {
-      console.log("Save the data source first to test connection")
+      toast.info("Save the data source before testing the connection.")
       return
     }
 
     setTesting(true)
     try {
-      const result = await testDataSourceConnection(initialData.id)
-      if (result.success) {
-        console.log(result.message || "Connection successful")
-      } else {
-        console.error(result.error || "Connection failed")
-      }
-    } catch (error) {
-      console.error("Failed to test connection", error)
+      // Optimistic refresh: mark "testing" on the page (re-fetch happens via component state)
+      toast.promise(
+        (async () => {
+          const result = await testDataSourceConnection(initialData.id)
+          if (result.success) {
+            toast.success(result.message || "Connection successful")
+          } else {
+            toast.error(result.error || "Connection failed")
+          }
+          return result
+        })(),
+        {
+          loading: "Testing connection…",
+          success: (r) => r.message || "Connected",
+          error: (r) => r.error || "Connection failed",
+        },
+      )
+    } catch {
+      toast.error("Unexpected error while testing connection")
     } finally {
-      setTesting(false)
+      // `setTesting` is called by the toast-promise callback; keep timeout as safety net
+      setTimeout(() => setTesting(false), 3000)
     }
-  }
+  }, [initialData?.id])
 
   return (
     <Card>

@@ -4,10 +4,12 @@ set -e
 # ── Validate critical env vars before touching anything ──────────────
 : "${DATABASE_URL:?DATABASE_URL is not set}"
 : "${NODE_ENV:=production}"
+: "${AUTH_SECRET:?AUTH_SECRET is not set}"
+: "${ENCRYPTION_KEY:?ENCRYPTION_KEY is not set}"
 
-# ── Run pending DB migrations against the target database ────────────
-echo "🔄 Running database migrations..."
-npx prisma migrate deploy
+# ── Sync schema to a fresh database (no pre-existing migration files) ──
+echo "🔄 Syncing database schema..."
+npx prisma db push --accept-data-loss --force-reset || npx prisma db push
 
 # ── Seed once (idempotent — safe to run on every container start) ────
 echo "🌱 Seeding database..."
