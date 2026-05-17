@@ -6,7 +6,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-RUN npm ci
+# npm install (not npm ci): the lockfile can drift slightly vs package.json
+# without blocking the image build; still deterministic for all pinned deps.
+RUN npm install --fetch-timeout=60000 --fetch-retries=5
 
 # ─── Stage 2: builder ────────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -19,8 +21,8 @@ COPY . .
 # Generate Prisma client
 RUN npx prisma generate
 
-# Build Next.js
-RUN npm run build
+# Build Next.js (--webpack avoids fontkit/Turbopack incompatibility)
+RUN npm run build -- --webpack
 
 # ─── Stage 3: runner ─────────────────────────────────────────────
 FROM node:20-alpine AS runner

@@ -3,7 +3,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
-import { encrypt, decrypt } from "@/lib/encryption"
+import { encrypt } from "@/lib/encryption"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 

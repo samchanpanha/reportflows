@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit"
 import { encrypt, decrypt } from "@/lib/encryption"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import type { Prisma } from "@prisma/client"
 import nodemailer from "nodemailer"
 
 const createChannelSchema = z.object({
@@ -201,29 +202,30 @@ export async function testEmailChannel(id: string) {
       return { success: false, error: "Not an email channel" }
     }
 
-    const config = channel.config as Record<string, any>
+     const config = channel.config as Record<string, unknown>
     
     // Decrypt password
-    let password = config.password
-    if (password?.includes(":")) {
+    const passwordVal = typeof config.password === "string" ? config.password : ""
+    let password = passwordVal
+    if (password.includes(":")) {
       password = decrypt(password)
     }
 
     // Create transporter
     const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port || 587,
-      secure: config.secure || false,
+      host: config.host as string,
+      port: config.port as number || 587,
+      secure: config.secure as boolean || false,
       auth: {
-        user: config.user,
+        user: config.user as string,
         pass: password,
       },
     })
 
     // Send test email
     await transporter.sendMail({
-      from: config.from || config.user,
-      to: config.testEmail || session.user.email,
+      from: (config.from as string) || (config.user as string),
+      to: (config.testEmail as string) || session.user.email || "",
       subject: "ReportFlow - Test Email",
       html: "<p>This is a test email from ReportFlow. Your email channel is configured correctly!</p>",
     })
@@ -270,11 +272,12 @@ export async function testTelegramChannel(id: string) {
       return { success: false, error: "Not a Telegram channel" }
     }
 
-    const config = channel.config as Record<string, any>
+     const config = channel.config as Record<string, unknown>
     
     // Decrypt bot token
-    let botToken = config.botToken
-    if (botToken?.includes(":")) {
+    const botTokenVal = typeof config.botToken === "string" ? config.botToken : ""
+    let botToken = botTokenVal
+    if (botToken.includes(":")) {
       botToken = decrypt(botToken)
     }
 

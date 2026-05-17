@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { hasPermission } from "@/lib/permissions"
 import { logAudit } from "@/lib/audit"
+import type { Role } from "@prisma/client"
 
 const createUserSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -33,7 +34,7 @@ export async function createSubUserAction(formData: FormData) {
 
     const passwordHash = await bcrypt.hash(password, 10)
     const newUser = await prisma.user.create({
-      data: { email, passwordHash, role: role as any, orgId },
+      data: { email, passwordHash, role: role as Role, orgId },
     })
 
     await logAudit({
@@ -99,7 +100,7 @@ export async function updateUserRoleAction(userId: string, role: string) {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { role: role as any },
+      data: { role: role as Role },
     })
 
     await logAudit({

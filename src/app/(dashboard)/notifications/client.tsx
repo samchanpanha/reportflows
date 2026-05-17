@@ -2,13 +2,13 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import type { Prisma } from "@prisma/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   createNotificationChannel,
-  updateNotificationChannel,
   deleteNotificationChannel,
   toggleNotificationChannel,
   testEmailChannel,
@@ -19,7 +19,7 @@ interface Channel {
   id: string
   type: string
   name: string
-  config: Record<string, any>
+  config: Prisma.JsonObject
   enabled: boolean
 }
 
@@ -348,10 +348,10 @@ export function NotificationsClient({ channels: initialChannels }: Notifications
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
-                    <p>
-                      <span className="text-muted-foreground">Host: </span>
-                      {(channel.config as any).host}:{(channel.config as any).port}
-                    </p>
+<p>
+                       <span className="text-muted-foreground">Host: </span>
+                        {String((channel.config as Prisma.JsonObject).host)}:{String((channel.config as Prisma.JsonObject).port)}
+                     </p>
                     <div className="flex gap-2 pt-2">
                       <Button
                         size="sm"
@@ -466,10 +466,10 @@ export function NotificationsClient({ channels: initialChannels }: Notifications
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
-                    <p>
-                      <span className="text-muted-foreground">Chat ID: </span>
-                      {(channel.config as any).chatId}
-                    </p>
+<p>
+                       <span className="text-muted-foreground">Chat ID: </span>
+                        {String((channel.config as Prisma.JsonObject).chatId)}
+                     </p>
                     <div className="flex gap-2 pt-2">
                       <Button
                         size="sm"

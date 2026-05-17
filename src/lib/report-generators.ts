@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs"
+import type { Prisma } from "@prisma/client"
 
 export interface ColumnDef {
   key: string
@@ -25,7 +26,7 @@ function csvEscape(val: string): string {
   return val
 }
 
-function formatCellValue(value: any, fmt?: ColumnDef["format"]): string {
+function formatCellValue(value: unknown, fmt?: ColumnDef["format"]): string {
   if (value === null || value === undefined) return ""
   switch (fmt) {
     case "currency":
@@ -36,31 +37,17 @@ function formatCellValue(value: any, fmt?: ColumnDef["format"]): string {
       if (typeof value === "number") return value.toLocaleString()
       return String(value)
     case "date":
-      return new Date(value).toLocaleDateString()
+      const asDate = new Date(value as string | number | Date)
+      if (isNaN(asDate.getTime())) return ""
+      return asDate.toLocaleDateString()
     default:
       return String(value)
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const makeDoc = (design: ReportDesign) => {
-  const PDFDoc: any = require("pdfkit")
-  return new PDFDoc({
-    size: "A4",
-    layout: design.orientation ?? "portrait",
-    margin: 50,
-    info: { Title: design.title ?? "Report", Creator: "ReportFlow" },
-  })
-}
-
-function docText(doc: any, text: string, x: number, y: number, opts?: { width?: number; height?: number; align?: string }) {
-  // pdfkit .text() signature: text(text, x?, y?, opts?)
-  return doc.text(text, x, y, opts)
-}
-
 export async function generateExcelBuffer(
   design: ReportDesign,
-  rows: Record<string, any>[],
+  rows: Prisma.JsonObject[],
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = "ReportFlow"
@@ -84,15 +71,21 @@ export async function generateExcelBuffer(
   rows.forEach((row) => {
     sheet.addRow(visibleColumns.map((col) => formatCellValue(row[col.key], col.format)))
   })
-  return Buffer.from(await workbook.xlsx.writeBuffer())
+  return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer)
 }
 
 export async function generatePDFBuffer(
   design: ReportDesign,
-  rows: Record<string, any>[],
+  rows: Prisma.JsonObject[],
 ): Promise<Buffer> {
-  return new Promise<Buffer>((resolve, reject) => {
-    const doc = makeDoc(design)
+  return new Promise<Buffer>(async (resolve, reject) => {
+    const { default: PDFDoc } = await import("pdfkit")
+    const doc = new PDFDoc({
+      size: "A4",
+      layout: design.orientation ?? "portrait",
+      margin: 50,
+      info: { Title: design.title ?? "Report", Creator: "ReportFlow" },
+    })
     const chunks: Buffer[] = []
     doc.on("data", (chunk: Buffer) => chunks.push(chunk))
     doc.on("end", () => resolve(Buffer.concat(chunks)))
@@ -148,7 +141,7 @@ export async function generatePDFBuffer(
 
 export async function generateCSVBuffer(
   design: ReportDesign,
-  rows: Record<string, any>[],
+  rows: Prisma.JsonObject[],
 ): Promise<Buffer> {
   const vc = design.columns
     .filter((c) => c.visible !== false)

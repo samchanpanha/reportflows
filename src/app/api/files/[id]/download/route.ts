@@ -43,7 +43,7 @@ export async function GET(
           "Content-Length": data.length.toString(),
         },
       })
-    } catch (fsErr) {
+    } catch {
       return NextResponse.json({ error: "File not accessible on disk" }, { status: 500 })
     }
   } catch (error) {

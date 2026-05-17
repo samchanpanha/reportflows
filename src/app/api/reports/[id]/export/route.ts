@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
 import { NextRequest, NextResponse } from "next/server"
 import { generateExcelBuffer, generatePDFBuffer, generateCSVBuffer } from "@/lib/report-generators"
+import type { Prisma } from "@prisma/client"
 
-async function fetchOrGenerateRows(queryId: string, orgId: string): Promise<{ columns: { key: string; label: string }[]; rows: Record<string, any>[] }> {
+async function fetchOrGenerateRows(queryId: string, orgId: string): Promise<{ columns: { key: string; label: string }[]; rows: Prisma.JsonObject[] }> {
   const query = await prisma.query.findUnique({ where: { id: queryId } })
   if (!query || query.orgId !== orgId) {
     return { columns: [], rows: [] }
@@ -12,7 +13,7 @@ async function fetchOrGenerateRows(queryId: string, orgId: string): Promise<{ co
   // Executing real SQL requires a DB connection pool per datasource, which is out of scope here.
   // Return placeholder data and warn callers.
   console.warn(`[EXPORT] Query ${queryId} would execute SQL: ${query.sqlText.slice(0, 120)}...`)
-  const placeholderRows: Record<string, any>[] = Array.from({ length: 20 }, (_, i) => ({
+  const placeholderRows: Prisma.JsonObject[] = Array.from({ length: 20 }, (_, i) => ({
     id: i + 1,
     name: `Sample Row ${i + 1}`,
     value: Math.round(Math.random() * 10000) / 100,
@@ -52,14 +53,17 @@ export async function GET(
 
     // Build columns config from report config or fallback to query columns
     let columnsConfig: Array<{ key: string; label?: string; visible?: boolean; format?: string; order?: number }>
-    if (report.columnsConfig) {
-      columnsConfig = Object.entries(report.columnsConfig as Record<string, any>).map(([key, cfg]: [string, any]) => ({
-        key,
-        label: cfg.label || key,
-        visible: cfg.visible ?? true,
-        format: cfg.format || "text",
-        order: cfg.order ?? 0,
-      }))
+    if (report.columnsConfig && typeof report.columnsConfig === "object") {
+      columnsConfig = Object.entries(report.columnsConfig as Record<string, unknown>).map(([key, cfg]: [string, unknown]) => {
+        const cfgObj = cfg as Record<string, unknown> | null
+        return {
+          key,
+          label: typeof cfgObj?.label === "string" ? cfgObj.label : key,
+          visible: cfgObj?.visible !== false,
+          format: typeof cfgObj?.format === "string" ? cfgObj.format : "text",
+          order: typeof cfgObj?.order === "number" ? cfgObj.order : 0,
+        }
+      })
     } else if (report.queryId) {
       columnsConfig = []
     } else {
@@ -67,7 +71,7 @@ export async function GET(
     }
 
     // Fetch/generate row data
-    let resultData: { columns: { key: string; label: string }[]; rows: Record<string, any>[] }
+    let resultData: { columns: { key: string; label: string }[]; rows: Prisma.JsonObject[] }
     if (report.queryId) {
       resultData = await fetchOrGenerateRows(report.queryId, session.user.orgId)
     } else {
@@ -91,12 +95,15 @@ export async function GET(
       })
       .sort((a, b) => a.order - b.order)
 
-    // Add any columns in config not in query result
-    for (const cfg of columnsConfig) {
-      if (cfg.visible && !columns.find(c => c.key === cfg.key)) {
-        columnDefs.push({ key: cfg.key, label: cfg.label || cfg.key, visible: true, order: cfg.order ?? 99, format: (cfg.format || "text") as any })
-      }
-    }
+// Add any columns in config not in query result
+     for (const cfg of columnsConfig) {
+       if (cfg.visible && !columns.find(c => c.key === cfg.key)) {
+         const format = cfg.format === "text" || cfg.format === "number" || cfg.format === "date" || cfg.format === "currency" 
+           ? cfg.format 
+           : "text"
+         columnDefs.push({ key: cfg.key, label: cfg.label || cfg.key, visible: true, order: cfg.order ?? 99, format })
+       }
+     }
 
     const design = {
       title: report.title,

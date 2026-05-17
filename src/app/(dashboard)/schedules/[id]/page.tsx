@@ -48,9 +48,9 @@ export default async function EditSchedulePage({ params }: { params: Promise<{ i
           <CardDescription>Update cron expression, recipients, and report attachment.</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScheduleForm
-            orgId={session.user.orgId}
-            initialData={{
+<ScheduleForm
+             _orgId={session.user.orgId}
+             initialData={{
               id: schedule.id,
               name: schedule.name,
               cronExpr: schedule.cronExpr,

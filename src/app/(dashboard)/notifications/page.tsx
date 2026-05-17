@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
+import type { Prisma } from "@prisma/client"
 import { NotificationsClient } from "./client"
 
 export default async function NotificationsPage() {
@@ -30,7 +31,7 @@ export default async function NotificationsPage() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Delivery Channels</h2>
-        <NotificationsClient channels={channels.map((c) => ({ ...c, config: c.config as Record<string, any> }))} />
+        <NotificationsClient channels={channels.map((c) => ({ ...c, config: c.config as Prisma.JsonObject }))} />
       </div>
 
       <div className="space-y-4">

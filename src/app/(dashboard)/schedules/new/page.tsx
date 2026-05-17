@@ -36,7 +36,7 @@ export default async function NewSchedulePage() {
           <CardDescription>When and what to run.</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScheduleForm orgId={session.user.orgId} reports={reports} />
+          <ScheduleForm _orgId={session.user.orgId} reports={reports} />
         </CardContent>
       </Card>
     </div>

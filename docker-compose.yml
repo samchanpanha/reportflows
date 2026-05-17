@@ -1,10 +1,11 @@
 services:
+  # ── PostgreSQL ───────────────────────────────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: reportflow_db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgrespassword}
       POSTGRES_DB: reportflow
     ports:
       - "5432:5432"
@@ -17,6 +18,7 @@ services:
       retries: 10
     restart: unless-stopped
 
+  # ── ReportFlow Next.js App ────────────────────────────────────────
   app:
     build:
       context: .
@@ -25,13 +27,26 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/reportflow?schema=public
-      AUTH_SECRET: ${AUTH_SECRET:-change_me_in_production}
+      # ── Database (required) ──────────────────────────────────────
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgrespassword}@postgres:5432/reportflow?schema=public
+
+      # ── NextAuth (AUTH_SECRET is required) ────────────────────────
       AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — copy .env.example to .env and set it}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-f19b8220b49f749ef43fba116ed630442e832d2c186efd5065810e0b7fc5}
-      NODE_ENV: production
+
+      # ── Encryption (required) ────────────────────────────────────
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required — copy .env.example to .env and set it}
+
+      # ── AWS S3 (optional — app falls back to local storage if unset) ───
+      AWS_REGION: ${AWS_REGION:-}
+      AWS_S3_BUCKET: ${AWS_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+
+      # ── Runtime ──────────────────────────────────────────────────
+      NODE_ENV: ${NODE_ENV:-production}
     depends_on:
       postgres:
         condition: service_healthy

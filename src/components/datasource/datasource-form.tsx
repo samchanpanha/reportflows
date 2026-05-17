@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { createDataSource, updateDataSource, testDataSourceConnection } from "@/app/actions/datasources"
+import type { Prisma } from "@prisma/client"
 
 type DataSourceType = "POSTGRESQL" | "MYSQL" | "CSV" | "API"
 
@@ -16,7 +17,7 @@ interface DataSourceFormProps {
     id: string
     name: string
     type: DataSourceType
-    connectionDetails: Record<string, any>
+    connectionDetails: Prisma.JsonValue
     password?: string
   }
   onSuccess?: () => void
@@ -30,14 +31,27 @@ export function DataSourceForm({ initialData, onSuccess }: DataSourceFormProps) 
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
     password: initialData?.password || "",
-    host: (initialData?.connectionDetails?.host as string) || "",
-    port: (initialData?.connectionDetails?.port as number) || 5432,
-    database: (initialData?.connectionDetails?.database as string) || "",
-    username: (initialData?.connectionDetails?.username as string) || "",
-    baseUrl: (initialData?.connectionDetails?.baseUrl as string) || "",
-    authType: (initialData?.connectionDetails?.authType as string) || "none",
-    authValue: (initialData?.connectionDetails?.authValue as string) || "",
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    baseUrl: "",
+    authType: "none",
+    authValue: "",
   })
+
+  const details = initialData?.connectionDetails
+  if (details && typeof details === "object") {
+    Object.assign(formData, {
+      host: typeof (details as Record<string, unknown>).host === "string" ? (details as Record<string, unknown>).host : "",
+      port: typeof (details as Record<string, unknown>).port === "number" ? (details as Record<string, unknown>).port : 5432,
+      database: typeof (details as Record<string, unknown>).database === "string" ? (details as Record<string, unknown>).database : "",
+      username: typeof (details as Record<string, unknown>).username === "string" ? (details as Record<string, unknown>).username : "",
+      baseUrl: typeof (details as Record<string, unknown>).baseUrl === "string" ? (details as Record<string, unknown>).baseUrl : "",
+      authType: typeof (details as Record<string, unknown>).authType === "string" ? (details as Record<string, unknown>).authType : "none",
+      authValue: typeof (details as Record<string, unknown>).authValue === "string" ? (details as Record<string, unknown>).authValue : "",
+    })
+  }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target

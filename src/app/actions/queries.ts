@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import type { Prisma } from "@prisma/client"
 
 const createQuerySchema = z.object({
   name: z.string().min(1, "Query name is required"),
@@ -90,14 +91,14 @@ export async function updateQuery(formData: unknown) {
     }
 
     // Create version history before updating
-    if (existing.sqlText !== validated.sqlText || JSON.stringify(existing.parameters) !== JSON.stringify(validated.parameters)) {
-      await prisma.queryVersion.create({
-        data: {
-          queryId: validated.id,
-          sqlText: existing.sqlText,
-          parameters: existing.parameters as any,
-        },
-      })
+if (existing.sqlText !== validated.sqlText || JSON.stringify(existing.parameters) !== JSON.stringify(validated.parameters)) {
+       await prisma.queryVersion.create({
+         data: {
+           queryId: validated.id,
+           sqlText: existing.sqlText,
+           parameters: existing.parameters as Prisma.InputJsonValue | undefined,
+         },
+       })
     }
 
     const updated = await prisma.query.update({
@@ -207,23 +208,23 @@ export async function rollbackQueryVersion(queryId: string, versionId: string) {
       return { success: false, error: "Version not found" }
     }
 
-    // Save current version as new history entry
-    await prisma.queryVersion.create({
-      data: {
-        queryId,
-        sqlText: query.sqlText,
-        parameters: query.parameters as any,
-      },
-    })
+// Save current query SQL as a new history entry BEFORE overwriting
+     await prisma.queryVersion.create({
+         data: {
+           queryId,
+           sqlText: query.sqlText,
+           parameters: query.parameters as Prisma.InputJsonValue | undefined,
+         },
+     })
 
-    // Restore version
-    const updated = await prisma.query.update({
-      where: { id: queryId },
-      data: {
-        sqlText: version.sqlText,
-        parameters: version.parameters as any,
-      },
-    })
+     // Restore the old version's SQL
+     const updated = await prisma.query.update({
+       where: { id: queryId },
+       data: {
+         sqlText: version.sqlText,
+         parameters: version.parameters as Prisma.InputJsonValue | undefined,
+       },
+     })
 
     await logAudit({
       orgId: session.user.orgId,
@@ -242,7 +243,10 @@ export async function rollbackQueryVersion(queryId: string, versionId: string) {
 }
 
 // Placeholder for SQL execution - full implementation would require database connection
-export async function executeQuery(queryId: string, paramValues?: Record<string, any>) {
+export async function executeQuery(
+  queryId: string,
+  paramValues?: Prisma.JsonObject,
+): Promise<{ success: boolean; error?: string; rows: Prisma.JsonObject[]; columns: string[]; message?: string }> {
   const session = await auth()
   if (!session?.user?.orgId) redirect("/login")
 

@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 import { computeNextRunAt } from "@/lib/cron-utils"
+import type { ExecutionLog } from "@prisma/client"
 
 const scheduleSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -93,7 +94,7 @@ export async function updateSchedule(formData: unknown) {
 
     const nextRunAt = computeNextRunAt(validated.cronExpr)
 
-    const updated = await prisma.schedule.update({
+    await prisma.schedule.update({
       where: { id: validated.id },
       data: {
         name: validated.name,
@@ -233,7 +234,7 @@ export async function retryExecution(executionId: string) {
     }
 
     const retryCount = log.schedule.retryCount
-    const retryNum = (log as any).retryNumber ?? 0
+    const retryNum = (log as unknown as ExecutionLog & { retryNumber: number }).retryNumber ?? 0
 
     if (retryNum >= retryCount) {
       return { success: false, error: `Max retry count (${retryCount}) reached` }

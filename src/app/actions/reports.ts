@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma"
 import { logAudit } from "@/lib/audit"
 import { redirect } from "next/navigation"
 import { z } from "zod"
+import type { Prisma } from "@prisma/client"
 
 const createReportSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -36,16 +37,16 @@ export async function createReport(formData: unknown) {
       }
     }
 
-    const report = await prisma.reportTemplate.create({
-      data: {
-        orgId: session.user.orgId,
-        title: validated.title,
-        description: validated.description,
-        queryId: validated.queryId,
-        format: validated.format,
-        columnsConfig: validated.columnsConfig as any,
-      },
-    })
+const report = await prisma.reportTemplate.create({
+       data: {
+         orgId: session.user.orgId,
+         title: validated.title,
+         description: validated.description,
+         queryId: validated.queryId,
+         format: validated.format,
+         columnsConfig: validated.columnsConfig as Prisma.InputJsonValue | undefined,
+       },
+     })
 
     await logAudit({
       orgId: session.user.orgId,
@@ -93,16 +94,16 @@ export async function updateReport(formData: unknown) {
       }
     }
 
-    const updated = await prisma.reportTemplate.update({
-      where: { id: validated.id },
-      data: {
-        title: validated.title,
-        description: validated.description,
-        queryId: validated.queryId,
-        format: validated.format,
-        columnsConfig: validated.columnsConfig as any,
-      },
-    })
+const updated = await prisma.reportTemplate.update({
+       where: { id: validated.id },
+       data: {
+         title: validated.title,
+         description: validated.description,
+         queryId: validated.queryId,
+         format: validated.format,
+         columnsConfig: validated.columnsConfig as Prisma.InputJsonValue | undefined,
+       },
+     })
 
     await logAudit({
       orgId: session.user.orgId,

@@ -1,7 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-require-imports */
+"use strict"
+
 import { mkdirSync, existsSync, statSync, writeFileSync, readFileSync, unlinkSync } from "fs"
 import { join } from "path"
-import type { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
+import type { S3Client } from "@aws-sdk/client-s3"
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3"
 
 const GENERATED_DIR = join(process.cwd(), "public", "generated")
 
@@ -19,10 +21,10 @@ export interface StoredFile {
 }
 
 export class FileStorage {
-  private s3Client?: any
-  private bucketName?: string
+  private s3Client: S3Client | undefined
+  private bucketName: string | undefined
 
-  constructor(s3Client?: any, bucketName?: string) {
+  constructor(s3Client?: S3Client, bucketName?: string) {
     this.s3Client = s3Client
     this.bucketName = bucketName
     if (this.s3Client && !this.bucketName) {
@@ -31,33 +33,41 @@ export class FileStorage {
   }
 
   async saveFile(filename: string, buffer: Buffer, mimeType: string): Promise<StoredFile> {
-    if (this.s3Client && this.bucketName) return this.saveToS3(filename, buffer, mimeType)
+    if (this.s3Client && this.bucketName) {
+      return this.saveToS3(filename, buffer, mimeType)
+    }
     return this.saveLocal(filename, buffer, mimeType)
   }
 
   async getFile(keyOrFilename: string): Promise<Buffer | null> {
-    if (this.s3Client && this.bucketName) return this.getFromS3(keyOrFilename)
+    if (this.s3Client && this.bucketName) {
+      return this.getFromS3(keyOrFilename)
+    }
     return this.getLocal(keyOrFilename)
   }
 
   async deleteFile(keyOrFilename: string): Promise<boolean> {
-    if (this.s3Client && this.bucketName) return this.deleteFromS3(keyOrFilename)
+    if (this.s3Client && this.bucketName) {
+      return this.deleteFromS3(keyOrFilename)
+    }
     return this.deleteLocal(keyOrFilename)
   }
 
   async getFileUrl(keyOrFilename: string, expiresIn = 3600): Promise<string> {
-    if (this.s3Client && this.bucketName) return this.getS3PresignedUrl(keyOrFilename, expiresIn)
+    if (this.s3Client && this.bucketName) {
+      return this.getS3PresignedUrl(keyOrFilename, expiresIn)
+    }
     return `/generated/${keyOrFilename}`
   }
 
   // ── Local Storage ────────────────────────────────────────────────
 
-  private saveLocal(filename: string, buffer: Buffer, mimeType: string): StoredFile {
+  private saveLocal(filename: string, buffer: Buffer, _mimeType: string): StoredFile {
     initLocalStorage()
     const filePath = join(GENERATED_DIR, filename)
     writeFileSync(filePath, buffer)
     const fileSize = (() => { try { return statSync(filePath).size } catch { return 0 } })()
-    return { key: filename, filename, mimeType, size: fileSize }
+    return { key: filename, filename, mimeType: _mimeType, size: fileSize }
   }
 
   private getLocal(filename: string): Buffer | null {
@@ -74,7 +84,6 @@ export class FileStorage {
 
   private async saveToS3(filename: string, buffer: Buffer, mimeType: string): Promise<StoredFile> {
     if (!this.s3Client || !this.bucketName) throw new Error("S3 not configured")
-    const { PutObjectCommand } = require("@aws-sdk/client-s3")
     await this.s3Client.send(
       new PutObjectCommand({
         Bucket: this.bucketName,
@@ -88,20 +97,24 @@ export class FileStorage {
 
   private async getFromS3(key: string): Promise<Buffer | null> {
     if (!this.s3Client || !this.bucketName) throw new Error("S3 not configured")
-    const { GetObjectCommand } = require("@aws-sdk/client-s3")
     const res = await this.s3Client.send(new GetObjectCommand({ Bucket: this.bucketName, Key: key }))
-    const chunks: any[] = []
-    for await (const chunk of res.Body!) chunks.push(chunk)
-    return Buffer.concat(chunks.map((c: any) => Buffer.from(c)))
+    const chunks: Buffer[] = []
+    if (res.Body) {
+      for await (const chunk of (res.Body as AsyncIterable<Uint8Array>)) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+    }
+    return chunks.length > 0 ? Buffer.concat(chunks) : null
   }
 
   private async deleteFromS3(key: string): Promise<boolean> {
     if (!this.s3Client || !this.bucketName) return false
     try {
-      const { DeleteObjectCommand } = require("@aws-sdk/client-s3")
       await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.bucketName, Key: key }))
       return true
-    } catch { return false }
+    } catch {
+      return false
+    }
   }
 
   private async getS3PresignedUrl(key: string, _expiresIn: number): Promise<string> {
@@ -111,10 +124,10 @@ export class FileStorage {
       return `/generated/${key}`
     }
     try {
-      const { getSignedUrl } = require("@aws-sdk/s3-request-presigner") as any
-      const { GetObjectCommand } = require("@aws-sdk/client-s3") as any
-      const cmd = new GetObjectCommand({ Bucket: this.bucketName, Key: key })
-      return getSignedUrl(this.s3Client as any, cmd, { expiresIn: _expiresIn })
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { getSignedUrl } = require("@aws-sdk/s3-request-presigner")
+      const cmd = new GetObjectCommand({ Bucket: this.bucketName!, Key: key })
+      return getSignedUrl(this.s3Client as S3Client, cmd, { expiresIn: _expiresIn })
     } catch {
       return `/generated/${key}`
     }
@@ -130,7 +143,8 @@ function createDefaultStorage(): FileStorage {
 
   if (region && bucket && accessKeyId && secretAccessKey) {
     try {
-      const { S3Client } = require("@aws-sdk/client-s3") as any
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { S3Client } = require("@aws-sdk/client-s3")
       return new FileStorage(
         new S3Client({ region, credentials: { accessKeyId, secretAccessKey } }),
         bucket,
@@ -141,7 +155,5 @@ function createDefaultStorage(): FileStorage {
   }
   return new FileStorage()
 }
-
-export type { S3Client }
 
 export const fileStorage = createDefaultStorage()

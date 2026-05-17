@@ -1,11 +1,12 @@
 import nodemailer from "nodemailer"
 import { decrypt } from "./encryption"
 import { prisma } from "./prisma"
+import type { Prisma } from "@prisma/client"
 
 export interface NotificationChannelConfig {
   type: "EMAIL" | "TELEGRAM"
   name: string
-  config: Record<string, any>
+  config: Prisma.JsonObject
   enabled: boolean
 }
 
@@ -18,10 +19,12 @@ export interface NotificationPayload {
   fileName?: string
 }
 
-function decryptConfig(config: Record<string, any>): Record<string, any> {
-  const out: Record<string, any> = { ...config }
-  if (out.password?.includes(":")) out.password = decrypt(out.password)
-  if (out.botToken?.includes(":")) out.botToken = decrypt(out.botToken)
+function decryptConfig(config: Prisma.JsonObject): Prisma.JsonObject {
+  const pw = config.password
+  const bt = config.botToken
+  const out: Prisma.JsonObject = { ...config }
+  if (typeof pw === "string" && pw.includes(":")) out.password = decrypt(pw)
+  if (typeof bt === "string" && bt.includes(":")) out.botToken = decrypt(bt)
   return out
 }
 
@@ -29,15 +32,15 @@ export async function getEnabledChannels(
   orgId: string,
   types?: ("EMAIL" | "TELEGRAM")[],
 ): Promise<NotificationChannelConfig[]> {
-  const where: any = { orgId, enabled: true }
-  if (types?.length) where.type = { in: types }
-  const rows = await prisma.notificationChannel.findMany({ where })
-  return rows.map((r) => ({
-    type: r.type as "EMAIL" | "TELEGRAM",
-    name: r.name,
-    config: decryptConfig(r.config as Record<string, any>),
-    enabled: r.enabled,
-  }))
+const where: Prisma.NotificationChannelWhereInput = { orgId, enabled: true }
+if (types?.length) where.type = { in: types }
+const rows = await prisma.notificationChannel.findMany({ where })
+return rows.map((r) => ({
+  type: r.type as "EMAIL" | "TELEGRAM",
+  name: r.name,
+  config: decryptConfig(r.config as Prisma.JsonObject),
+  enabled: r.enabled,
+}))
 }
 
 export async function sendNotification(
@@ -54,20 +57,21 @@ export async function sendNotification(
 }
 
 async function sendEmail(
-  config: Record<string, any>,
+  config: Prisma.JsonObject,
   payload: NotificationPayload,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const password = decrypt(config.password ?? "")
+    const pw = typeof config.password === "string" ? config.password : ""
+    const password = decrypt(pw)
     if (!password) {
       return { success: false, error: "SMTP password not configured" }
     }
 
     const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port || 587,
-      secure: config.secure || false,
-      auth: { user: config.user, pass: password },
+      host: config.host as string,
+      port: (config.port as number) ?? 587,
+      secure: (config.secure as boolean) ?? false,
+      auth: { user: typeof config.user === "string" ? config.user : "", pass: password },
     })
 
     const attachments: Array<{ path: string; filename?: string }> = []
@@ -75,14 +79,14 @@ async function sendEmail(
       attachments.push({ path: payload.filePath, filename: payload.fileName })
     }
 
-    const mailOptions: Record<string, any> = {
-      from: config.from || config.user,
+    const mailOptions = {
+      from: typeof config.from === "string" ? config.from : (typeof config.user === "string" ? config.user : ""),
       to: payload.recipients.join(", "),
       subject: payload.subject,
       text: payload.body,
       html: payload.htmlBody || payload.body,
-      attachments: attachments.length > 0 ? attachments : undefined,
-    }
+      ...(attachments.length > 0 ? { attachments } : {}),
+    } as Parameters<typeof transporter.sendMail>[0]
 
     const info = await transporter.sendMail(mailOptions)
     console.log(`[EMAIL] Sent to ${payload.recipients.join(", ")}: ${info.messageId}`)
@@ -94,12 +98,13 @@ async function sendEmail(
 }
 
 async function sendTelegram(
-  config: Record<string, any>,
+  config: Prisma.JsonObject,
   payload: NotificationPayload,
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const botToken = decrypt(config.botToken ?? "")
-    const chatId = config.chatId
+    const bt = typeof config.botToken === "string" ? config.botToken : ""
+    const botToken = decrypt(bt)
+    const chatId = typeof config.chatId === "string" ? config.chatId : ""
 
     if (!botToken) {
       return { success: false, error: "Telegram bot token not configured" }
@@ -133,7 +138,7 @@ async function sendTelegram(
       for (const recipient of payload.recipients) {
         const formData = new FormData()
         formData.append("chat_id", recipient || chatId)
-        formData.append("document", new Blob([]), payload.fileName || "report")
+        formData.append("document", new Blob([]), typeof payload.fileName === "string" ? payload.fileName : "report")
         await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
           method: "POST",
           body: formData,

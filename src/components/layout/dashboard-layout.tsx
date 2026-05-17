@@ -28,24 +28,14 @@ const defaultNavItems = [
   { href: "/settings", label: "Settings", icon: "⚙️", showTo: "ALL" },
 ]
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { data: session } = useSession()
-  const pathname = usePathname()
-  
-  const userRole = session?.user?.role || "VIEWER"
+interface SidebarProps {
+  session: Awaited<ReturnType<typeof useSession>>["data"]
+  pathname: string
+  navItems: Array<{ href: string; label: string; icon: string }>
+}
 
-  const navItems = defaultNavItems.filter((item) => {
-    if (item.showTo === "ALL") return true
-    if (item.showTo === "canManageUsers") return hasPermission(userRole, "canManageUsers")
-    if (item.showTo === "canManageSystem") return hasPermission(userRole, "canManageSystem")
-    return false
-  })
-
-  const Sidebar = () => (
+function Sidebar({ session, pathname, navItems }: SidebarProps) {
+  return (
     <div className="flex flex-col h-full bg-muted/40 border-r">
       <div className="p-4 font-bold text-xl">ReportFlow</div>
       <nav className="flex-1 px-2 space-y-1">
@@ -81,12 +71,30 @@ export default function DashboardLayout({
       </div>
     </div>
   )
+}
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const { data: session } = useSession()
+  const pathname = usePathname()
+
+  const userRole = session?.user?.role || "VIEWER"
+
+  const navItems = defaultNavItems.filter((item) => {
+    if (item.showTo === "ALL") return true
+    if (item.showTo === "canManageUsers") return hasPermission(userRole, "canManageUsers")
+    if (item.showTo === "canManageSystem") return hasPermission(userRole, "canManageSystem")
+    return false
+  })
 
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Desktop sidebar */}
       <aside className="hidden lg:block w-64 flex-shrink-0">
-        <Sidebar />
+        <Sidebar session={session} pathname={pathname} navItems={navItems} />
       </aside>
 
       {/* Mobile sidebar */}
@@ -98,9 +106,9 @@ export default function DashboardLayout({
               <Menu />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-64">
-            <Sidebar />
-          </SheetContent>
+<SheetContent side="left" className="p-0 w-64">
+             <Sidebar session={session} pathname={pathname} navItems={navItems} />
+           </SheetContent>
         </Sheet>
       </div>
 

@@ -2,6 +2,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { ReportDesigner } from "@/components/report/report-designer"
+import type { Prisma } from "@prisma/client"
 
 export default async function EditReportPage({
   params,
@@ -44,7 +45,7 @@ export default async function EditReportPage({
           description: report.description || undefined,
           queryId: report.queryId || undefined,
           format: report.format,
-          columnsConfig: report.columnsConfig as Record<string, any> | undefined,
+          columnsConfig: report.columnsConfig as Prisma.JsonObject | undefined,
         }}
         onSuccess={() => redirect("/reports")}
       />

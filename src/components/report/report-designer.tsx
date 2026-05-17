@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { createReport, updateReport, exportReport } from "@/app/actions/reports"
+import type { Prisma } from "@prisma/client"
 
 interface Column {
   name: string
@@ -29,7 +30,7 @@ interface ReportDesignerProps {
     description?: string
     queryId?: string
     format: string
-    columnsConfig?: Record<string, any>
+    columnsConfig?: Prisma.JsonObject
   }
   onSuccess?: () => void
 }
@@ -53,13 +54,25 @@ export function ReportDesigner({
 
   const [columns, setColumns] = useState<Column[]>(
     initialData?.columnsConfig
-      ? Object.entries(initialData.columnsConfig).map(([name, config]) => ({
-          name,
-          visible: config.visible !== false,
-          order: config.order || 0,
-          format: config.format || "text",
-          options: config.options,
-        }))
+      ? (() => {
+          const cfg = initialData.columnsConfig
+          if (!cfg || typeof cfg !== "object") return []
+          return Object.entries(cfg).map(([name, config]) => ({
+            name,
+            visible: typeof config === "object" && config !== null && "visible" in config 
+              ? (config as Record<string, unknown>).visible !== false 
+              : true,
+            order: typeof config === "object" && config !== null && "order" in config 
+              ? (config as Record<string, unknown>).order as number || 0 
+              : 0,
+            format: typeof config === "object" && config !== null && "format" in config 
+              ? (config as Record<string, unknown>).format as Column["format"] || "text" 
+              : "text",
+            options: typeof config === "object" && config !== null && "options" in config 
+              ? (config as Record<string, unknown>).options as Column["options"] 
+              : undefined,
+          }))
+        })()
       : []
   )
 
@@ -96,7 +109,7 @@ export function ReportDesigner({
   const handleColumnFormatChange = (index: number, format: string) => {
     setColumns(prev => {
       const updated = [...prev]
-      updated[index].format = format as any
+      updated[index].format = format as Column["format"]
       return updated
     })
   }
@@ -109,7 +122,7 @@ export function ReportDesigner({
     setColumns(prev => {
       const updated = [...prev]
       updated[index].options = updated[index].options || {}
-      ;(updated[index].options as Record<string, any>)[option] = value
+      ;(updated[index].options as Record<string, unknown>)[option] = value
       return updated
     })
   }
@@ -120,7 +133,7 @@ export function ReportDesigner({
 
     try {
       // Build columns config
-      const columnsConfig: Record<string, any> = {}
+      const columnsConfig: Prisma.JsonObject = {}
       columns.forEach((col, idx) => {
         columnsConfig[col.name] = {
           visible: col.visible,
@@ -164,7 +177,7 @@ export function ReportDesigner({
 
     setExporting(true)
     try {
-      const result = await exportReport(initialData.id, formData.format as any)
+      const result = await exportReport(initialData.id, formData.format as "PDF" | "EXCEL" | "CSV")
       if (result.success) {
         console.log("Export started:", result.downloadUrl)
       } else {

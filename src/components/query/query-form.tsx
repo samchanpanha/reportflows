@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { createQuery, updateQuery, executeQuery, getQueryVersions, rollbackQueryVersion } from "@/app/actions/queries"
-import type { DataSourceType } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 
 interface QueryFormProps {
   dataSources: Array<{ id: string; name: string; type: string }>
@@ -19,7 +19,7 @@ interface QueryFormProps {
     description?: string
     dataSourceId: string
     sqlText: string
-    parameters?: Record<string, any>
+    parameters?: Prisma.JsonObject
   }
   onSuccess?: () => void
 }
@@ -29,15 +29,15 @@ export function QueryForm({ dataSources, initialData, onSuccess }: QueryFormProp
   const [loading, setLoading] = useState(false)
   const [executing, setExecuting] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
-  const [versions, setVersions] = useState<any[]>([])
-  const [results, setResults] = useState<{ columns: string[]; rows: any[] } | null>(null)
+  const [versions, setVersions] = useState<Prisma.QueryVersionGetPayload<Record<string, unknown>>[]>([])
+  const [results, setResults] = useState<{ columns: string[]; rows: Prisma.JsonObject[] } | null>(null)
 
   const [formData, setFormData] = useState({
     name: initialData?.name || "",
     description: initialData?.description || "",
     dataSourceId: initialData?.dataSourceId || (dataSources[0]?.id || ""),
     sqlText: initialData?.sqlText || "SELECT * FROM table_name LIMIT 10",
-    paramValues: {} as Record<string, any>,
+    paramValues: {} as Prisma.JsonObject,
   })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -120,11 +120,17 @@ export function QueryForm({ dataSources, initialData, onSuccess }: QueryFormProp
   const handleRollback = async (versionId: string) => {
     if (!initialData?.id) return
 
+    // Locate the version to restore BEFORE the server call (server clears it via back-reference)
+    const version = versions.find((v) => v.id === versionId)
+    if (!version) return
+
     const result = await rollbackQueryVersion(initialData.id, versionId)
     if (result.success) {
-      setFormData(prev => ({ ...prev, sqlText: formData.sqlText }))
+      setFormData((prev) => ({ ...prev, sqlText: version.sqlText }))
       setShowVersions(false)
-      console.log("Rolled back to previous version")
+      console.log("Rolled back to:", version.sqlText.slice(0, 80))
+    } else {
+      console.error(result.error || "Rollback failed")
     }
   }
 

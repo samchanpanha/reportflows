@@ -5,6 +5,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
+interface DataSourceConnection {
+  host?: string
+  port?: number
+  database?: string
+}
+
+interface DataSourceRow {
+  id: string
+  name: string
+  type: string
+  status: string
+  connectionDetails: Record<string, unknown> | null
+  createdAt: Date
+  lastTested: Date | null
+}
+
 export default async function DataSourcesPage() {
   const session = await auth()
   if (!session?.user?.orgId) redirect("/login")
@@ -74,11 +90,11 @@ export default async function DataSourcesPage() {
                 </CardHeader>
                 <CardContent className="text-sm text-muted-foreground space-y-1">
                   <p>Type: <span className="font-medium text-foreground">{src.type}</span></p>
-                  {(src.connectionDetails as Record<string, any> | null)?.host && (
-                    <p>Host: <span className="font-medium text-foreground">{(src.connectionDetails as Record<string, any>).host}{(src.connectionDetails as Record<string, any>).port ? `:${(src.connectionDetails as Record<string, any>).port}` : ""}</span></p>
+                  {(src.connectionDetails as DataSourceConnection | null)?.host && (
+                    <p>Host: <span className="font-medium text-foreground">{(src.connectionDetails as DataSourceConnection).host}{(src.connectionDetails as DataSourceConnection).port ? `:${(src.connectionDetails as DataSourceConnection).port}` : ""}</span></p>
                   )}
-                  {(src.connectionDetails as Record<string, any> | null)?.database && (
-                    <p>Database: <span className="font-medium text-foreground">{(src.connectionDetails as Record<string, any>).database}</span></p>
+                  {(src.connectionDetails as DataSourceConnection | null)?.database && (
+                    <p>Database: <span className="font-medium text-foreground">{(src.connectionDetails as DataSourceConnection).database}</span></p>
                   )}
                   <p className="pt-2 text-xs">
                     Created {new Date(src.createdAt).toLocaleDateString()}

@@ -1,10 +1,9 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { NextRequest, NextResponse } from "next/server"
+import type { Prisma } from "@prisma/client"
 
 export async function GET(request: NextRequest) {
-  const format = request.nextUrl.searchParams.get("format") || "csv"
-
   try {
     const session = await auth()
     if (!session?.user?.orgId) {
@@ -16,7 +15,7 @@ export async function GET(request: NextRequest) {
     const daysBack = parseInt(request.nextUrl.searchParams.get("days") || "30", 10)
     const since = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000)
 
-    const where: Record<string, any> = {
+    const where: Prisma.AuditLogWhereInput = {
       orgId: session.user.orgId,
       createdAt: { gte: since },
     }

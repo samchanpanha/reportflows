@@ -2,7 +2,7 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { DataSourceForm } from "@/components/datasource/datasource-form"
-import { DataSourceType } from "@prisma/client"
+import type { Prisma, DataSourceType } from "@prisma/client"
 
 export default async function EditDataSourcePage({
   params,
@@ -34,7 +34,7 @@ export default async function EditDataSourcePage({
           id: datasource.id,
           name: datasource.name,
           type: datasource.type as DataSourceType,
-          connectionDetails: datasource.connectionDetails as Record<string, any>,
+          connectionDetails: datasource.connectionDetails as Prisma.JsonObject,
         }}
         onSuccess={() => redirect("/data-sources")}
       />
