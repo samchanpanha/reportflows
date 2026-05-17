@@ -104,7 +104,7 @@ export default function DashboardLayout({
         </Sheet>
       </div>
 
-      <main className="flex-1 overflow-auto p-6">{children}</main>
+      <main className="flex-1 overflow-auto p-6 animate-fade-to-black">{children}</main>
     </div>
   )
 }

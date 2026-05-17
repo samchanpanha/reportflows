@@ -2,6 +2,8 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export default async function QueriesPage() {
   const session = await auth()
@@ -9,6 +11,7 @@ export default async function QueriesPage() {
 
   const queries = await prisma.query.findMany({
     where: { orgId: session.user.orgId },
+    include: { dataSource: { select: { name: true, type: true } } },
     orderBy: { updatedAt: "desc" },
   })
 
@@ -21,9 +24,9 @@ export default async function QueriesPage() {
             Write and manage your SQL queries.
           </p>
         </div>
-        <span className="text-sm text-muted-foreground">
-          {queries.length} quer{queries.length !== 1 ? "ies" : "y"}
-        </span>
+        <Link href="/queries/new">
+          <Button>+ New Query</Button>
+        </Link>
       </div>
 
       {queries.length === 0 ? (
@@ -34,37 +37,39 @@ export default async function QueriesPage() {
             <p className="text-muted-foreground text-sm mt-1 max-w-md">
               Queries let you write SQL to extract data from your connected data sources.
             </p>
+            <Link href="/queries/new" className="mt-4">
+              <Button>Create your first query</Button>
+            </Link>
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="text-left py-3 px-4 font-medium">Name</th>
-                    <th className="text-left py-3 px-4 font-medium">Description</th>
-                    <th className="text-left py-3 px-4 font-medium">Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {queries.map((q) => (
-                    <tr key={q.id} className="border-b hover:bg-muted/20 transition-colors">
-                      <td className="py-3 px-4 font-medium">{q.name}</td>
-                      <td className="py-3 px-4 text-muted-foreground">
-                        {q.description || "—"}
-                      </td>
-                      <td className="py-3 px-4 text-muted-foreground text-xs">
-                        {new Date(q.updatedAt).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4">
+          {queries.map((query) => (
+            <Link key={query.id} href={`/queries/${query.id}`}>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base">{query.name}</CardTitle>
+                      {query.description && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {query.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-xs bg-muted px-2 py-1 rounded">
+                      {query.dataSource.type}
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-1">
+                  <p>Data Source: <span className="font-medium text-foreground">{query.dataSource.name}</span></p>
+                  <p>Updated: <span className="font-medium text-foreground">{new Date(query.updatedAt).toLocaleDateString()}</span></p>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   )

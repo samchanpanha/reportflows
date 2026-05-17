@@ -14,19 +14,49 @@ enum Role {
   VIEWER
 }
 
+enum DataSourceType {
+  POSTGRESQL
+  MYSQL
+  CSV
+  API
+}
+
+enum DataSourceStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum ExecutionTrigger {
+  MANUAL
+  SCHEDULED
+  RETRY
+}
+
 model Organization {
-  id          String   @id @default(uuid()) @db.Uuid
-  name        String
-  plan        String   @default("STARTER") // STARTER, BUSINESS, ENTERPRISE
-  maxUsers    Int?     @map("max_users")
-  createdAt   DateTime @default(now()) @map("created_at")
-  users       User[]
-  dataSources DataSource[]
-  queries     Query[]
-  reports     ReportTemplate[]
-  schedules   Schedule[]
-  notifications Notification[]
-  auditLogs   AuditLog[]
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  plan                String   @default("STARTER") // STARTER, BUSINESS, ENTERPRISE
+  maxUsers            Int?     @map("max_users")
+  fileRetentionDays   Int      @map("file_retention_days") @default(90)
+  createdAt           DateTime @default(now()) @map("created_at")
+  users               User[]
+  dataSources         DataSource[]
+  queries             Query[]
+  reports             ReportTemplate[]
+  schedules           Schedule[]
+  notifications       Notification[]
+  notificationChannels NotificationChannel[]
+  generatedFiles      GeneratedFile[]
+  auditLogs           AuditLog[]
 
   @@map("organizations")
 }
@@ -102,48 +132,65 @@ model AuditLog {
 }
 // ─── Data Sources ──────────────────────────────────────────────
 model DataSource {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  type        String   @default("POSTGRESQL") // POSTGRESQL, MYSQL, CSV, API
-  host        String?
-  port        Int?
-  database    String?  @map("db_name")
-  username    String?
-  passwordEnc String?  @map("password_enc") // encrypted
-  status      String   @default("ACTIVE") // ACTIVE, INACTIVE, ERROR
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  org         Organization @relation(fields: [orgId], references: [id])
+  id                String            @id @default(uuid()) @db.Uuid
+  orgId             String            @map("org_id") @db.Uuid
+  name              String
+  type              DataSourceType    @default(POSTGRESQL)
+  connectionDetails Json              @map("connection_details") // {host, port, database, username, baseUrl, headers, etc}
+  passwordEnc       String?           @map("password_enc") // encrypted password stored separately
+  status            DataSourceStatus  @default(ACTIVE)
+  lastTested        DateTime?         @map("last_tested")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  org               Organization      @relation(fields: [orgId], references: [id])
+  queries           Query[]
 
   @@map("data_sources")
 }
 
 // ─── Queries ───────────────────────────────────────────────────
 model Query {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  name        String
-  description String?
-  sql         String   @db.Text
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  org         Organization @relation(fields: [orgId], references: [id])
+  id            String      @id @default(uuid()) @db.Uuid
+  orgId         String      @map("org_id") @db.Uuid
+  dataSourceId  String      @map("data_source_id") @db.Uuid
+  name          String
+  description   String?
+  sqlText       String      @map("sql_text") @db.Text
+  parameters    Json?       // {paramName: "type", ...}
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  org           Organization @relation(fields: [orgId], references: [id])
+  dataSource    DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  versions      QueryVersion[]
 
   @@map("queries")
 }
 
+model QueryVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  queryId   String   @map("query_id") @db.Uuid
+  sqlText   String   @map("sql_text") @db.Text
+  parameters Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  query     Query    @relation(fields: [queryId], references: [id], onDelete: Cascade)
+
+  @@map("query_versions")
+}
+
 // ─── Report Templates ──────────────────────────────────────────
 model ReportTemplate {
-  id          String   @id @default(uuid()) @db.Uuid
-  orgId       String   @map("org_id") @db.Uuid
-  title       String
-  description String?
-  format      String   @default("PDF") // PDF, EXCEL, CSV
-  lastRunAt   DateTime? @map("last_run_at")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  org         Organization @relation(fields: [orgId], references: [id])
+  id            String   @id @default(uuid()) @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  queryId       String?  @map("query_id") @db.Uuid
+  title         String
+  description   String?
+  format        String   @default("PDF") // PDF, EXCEL, CSV
+  columnsConfig Json?    @map("columns_config") // {columnName: {visible, order, format, ...}, ...}
+  templateFile  String?  @map("template_file")
+  lastRunAt     DateTime? @map("last_run_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  org           Organization @relation(fields: [orgId], references: [id])
 
   @@map("report_templates")
 }
@@ -152,16 +199,34 @@ model ReportTemplate {
 model Schedule {
   id          String   @id @default(uuid()) @db.Uuid
   orgId       String   @map("org_id") @db.Uuid
+  reportId    String?  @map("report_id") @db.Uuid
   name        String
-  cron        String   @default("0 9 * * 1") // e.g. every Monday 9am
+  cronExpr    String   @map("cron_expr") @default("0 9 * * 1")
+  recipients  String[] @default([])
+  retryCount  Int      @map("retry_count") @default(3)
   enabled     Boolean  @default(true)
   lastRunAt   DateTime? @map("last_run_at")
   nextRunAt   DateTime? @map("next_run_at")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   org         Organization @relation(fields: [orgId], references: [id])
+  executions  ExecutionLog[]
 
   @@map("schedules")
+}
+
+model ExecutionLog {
+  id          String            @id @default(uuid()) @db.Uuid
+  scheduleId  String            @map("schedule_id") @db.Uuid
+  status      ExecutionStatus   @default(PENDING)
+  trigger     ExecutionTrigger  @default(MANUAL)
+  duration    Int?              // milliseconds
+  output      String?           @db.Text // result file path or error details
+  error       String?           @db.Text
+  createdAt   DateTime          @default(now()) @map("created_at")
+  schedule    Schedule          @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@map("execution_logs")
 }
 
 // ─── Notifications ─────────────────────────────────────────────
@@ -177,4 +242,34 @@ model Notification {
   org         Organization @relation(fields: [orgId], references: [id])
 
   @@map("notifications")
+}
+
+model NotificationChannel {
+  id        String   @id @default(uuid()) @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  type      String   // "EMAIL", "TELEGRAM"
+  name      String
+  config    Json     // {smtp settings or telegram token}
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  org       Organization @relation(fields: [orgId], references: [id])
+
+  @@map("notification_channels")
+}
+
+model GeneratedFile {
+  id          String   @id @default(uuid()) @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  scheduleId  String?  @map("schedule_id") @db.Uuid
+  reportId    String?  @map("report_id") @db.Uuid
+  fileName    String   @map("file_name")
+  fileSize    Int      @map("file_size")
+  filePath    String   @map("file_path")
+  fileType    String   @map("file_type") // pdf, xlsx, csv
+  createdAt   DateTime @default(now()) @map("created_at")
+  expiresAt   DateTime @map("expires_at")
+  org         Organization @relation(fields: [orgId], references: [id])
+
+  @@map("generated_files")
 }

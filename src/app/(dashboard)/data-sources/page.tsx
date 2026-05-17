@@ -2,6 +2,8 @@ import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
 
 export default async function DataSourcesPage() {
   const session = await auth()
@@ -34,9 +36,9 @@ export default async function DataSourcesPage() {
             Connect and manage your database connections.
           </p>
         </div>
-        <span className="text-sm text-muted-foreground">
-          {sources.length} source{sources.length !== 1 && "s"}
-        </span>
+        <Link href="/data-sources/new">
+          <Button>+ New Data Source</Button>
+        </Link>
       </div>
 
       {sources.length === 0 ? (
@@ -47,38 +49,48 @@ export default async function DataSourcesPage() {
             <p className="text-muted-foreground text-sm mt-1 max-w-md">
               Data sources allow you to connect to databases and APIs to pull data for your reports.
             </p>
+            <Link href="/data-sources/new" className="mt-4">
+              <Button>Create your first data source</Button>
+            </Link>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {sources.map((src) => (
-            <Card key={src.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-base font-medium flex items-center gap-2">
-                  <span>{typeIcon[src.type] || "📦"}</span>
-                  {src.name}
-                </CardTitle>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                    statusColor[src.status] || "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {src.status}
-                </span>
-              </CardHeader>
-              <CardContent className="text-sm text-muted-foreground space-y-1">
-                <p>Type: <span className="font-medium text-foreground">{src.type}</span></p>
-                {src.host && (
-                  <p>Host: <span className="font-medium text-foreground">{src.host}{src.port ? `:${src.port}` : ""}</span></p>
-                )}
-                {src.database && (
-                  <p>Database: <span className="font-medium text-foreground">{src.database}</span></p>
-                )}
-                <p className="pt-2 text-xs">
-                  Created {new Date(src.createdAt).toLocaleDateString()}
-                </p>
-              </CardContent>
-            </Card>
+            <Link key={src.id} href={`/data-sources/${src.id}`}>
+              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-base font-medium flex items-center gap-2">
+                    <span>{typeIcon[src.type] || "📦"}</span>
+                    {src.name}
+                  </CardTitle>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      statusColor[src.status] || "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {src.status}
+                  </span>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground space-y-1">
+                  <p>Type: <span className="font-medium text-foreground">{src.type}</span></p>
+                  {(src.connectionDetails as Record<string, any> | null)?.host && (
+                    <p>Host: <span className="font-medium text-foreground">{(src.connectionDetails as Record<string, any>).host}{(src.connectionDetails as Record<string, any>).port ? `:${(src.connectionDetails as Record<string, any>).port}` : ""}</span></p>
+                  )}
+                  {(src.connectionDetails as Record<string, any> | null)?.database && (
+                    <p>Database: <span className="font-medium text-foreground">{(src.connectionDetails as Record<string, any>).database}</span></p>
+                  )}
+                  <p className="pt-2 text-xs">
+                    Created {new Date(src.createdAt).toLocaleDateString()}
+                  </p>
+                  {src.lastTested && (
+                    <p className="text-xs">
+                      Last tested {new Date(src.lastTested).toLocaleDateString()}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
       )}

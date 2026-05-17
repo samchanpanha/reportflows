@@ -1,7 +1,9 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import Link from "next/link"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 
 export default async function SchedulesPage() {
   const session = await auth()
@@ -11,6 +13,15 @@ export default async function SchedulesPage() {
     where: { orgId: session.user.orgId },
     orderBy: { createdAt: "desc" },
   })
+  const reportIds = schedules.filter(s => s.reportId).map(s => s.reportId!)
+  const reportTitles = reportIds.length > 0
+    ? Object.fromEntries(
+        (await prisma.reportTemplate.findMany({
+          where: { id: { in: reportIds } },
+          select: { id: true, title: true },
+        })).map(r => [r.id, r.title])
+      )
+    : {}
 
   const activeCount = schedules.filter((s) => s.enabled).length
 
@@ -23,9 +34,14 @@ export default async function SchedulesPage() {
             Manage automated report generation schedules.
           </p>
         </div>
-        <span className="text-sm text-muted-foreground">
-          {activeCount} active / {schedules.length} total
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-muted-foreground">
+            {activeCount} active / {schedules.length} total
+          </span>
+          <Link href="/schedules/new">
+            <Button>+ New Schedule</Button>
+          </Link>
+        </div>
       </div>
 
       {schedules.length === 0 ? (
@@ -46,19 +62,27 @@ export default async function SchedulesPage() {
                 <thead>
                   <tr className="border-b bg-muted/30">
                     <th className="text-left py-3 px-4 font-medium">Name</th>
+                    <th className="text-left py-3 px-4 font-medium">Report</th>
                     <th className="text-left py-3 px-4 font-medium">Cron</th>
                     <th className="text-left py-3 px-4 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 font-medium">Last Run</th>
                     <th className="text-left py-3 px-4 font-medium">Next Run</th>
+                    <th className="text-left py-3 px-4 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {schedules.map((s) => (
                     <tr key={s.id} className="border-b hover:bg-muted/20 transition-colors">
-                      <td className="py-3 px-4 font-medium">{s.name}</td>
+                      <td className="py-3 px-4 font-medium">
+                        <Link href={`/schedules/${s.id}`} className="hover:underline">
+                          {s.name}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-4 text-muted-foreground text-xs">
+                        {reportTitles[s.reportId ?? ""] ?? "—"}
+                      </td>
                       <td className="py-3 px-4">
                         <code className="px-2 py-0.5 bg-muted rounded text-xs">
-                          {s.cron}
+                          {s.cronExpr}
                         </code>
                       </td>
                       <td className="py-3 px-4">
@@ -72,15 +96,22 @@ export default async function SchedulesPage() {
                           {s.enabled ? "Active" : "Paused"}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-muted-foreground text-xs">
-                        {s.lastRunAt
-                          ? new Date(s.lastRunAt).toLocaleString()
-                          : "Never"}
-                      </td>
-                      <td className="py-3 px-4 text-muted-foreground text-xs">
+                      <td className="py-3 px-4 text-muted-foreground text-xs whitespace-nowrap">
                         {s.nextRunAt
                           ? new Date(s.nextRunAt).toLocaleString()
                           : "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <form action={`/api/schedules/${s.id}/run`} method="POST">
+                            <Button variant="outline" size="sm">Run Now</Button>
+                          </form>
+                          <form action={`/api/schedules/${s.id}/toggle`} method="POST">
+                            <Button variant="ghost" size="sm">
+                              {s.enabled ? "Pause" : "Enable"}
+                            </Button>
+                          </form>
+                        </div>
                       </td>
                     </tr>
                   ))}
